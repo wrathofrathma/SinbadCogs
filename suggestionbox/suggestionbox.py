@@ -86,7 +86,7 @@ class SuggestionBox:
         else:
             await self.bot.say("Suggestions enabled.")
 
-    @commands.cooldown(1, 300, commands.BucketType.user)
+    @commands.cooldown(1, 10, commands.BucketType.user)
     @commands.command(name="suggest", pass_context=True)
     async def makesuggestion(self, ctx):
         "make a suggestion by following the prompts"
@@ -127,23 +127,35 @@ class SuggestionBox:
             await self.bot.send_message(author, "Your suggestion was "
                                         "submitted.")
 
-    async def send_suggest(self, message, server):
+    async def send_suggest(self, message, server, user: discord.Member=None):
 
         author = server.get_member(message.author.id)
         suggestion = message.clean_content
         avatar = author.avatar_url if author.avatar \
             else author.default_avatar_url
-
-        em = discord.Embed(description=suggestion,
-                           color=discord.Color.purple())
+        
+        if not user:
+            user = author
+        em = discord.Embed(description=suggestion, timestamp=message.timestamp,
+                           color=discord.Color.purple())    
         em.set_author(name='Suggestion from {0.display_name}'.format(author),
                       icon_url=avatar)
-        em.set_footer(text='{0.id}'.format(author))
+
+        name = str(user)
+        name = " ~ ".join((name, user.nick)) if user.nick else name
+
+        if user.avatar_url:
+            em.set_author(name=name, url=user.avatar_url)
+            em.set_thumbnail(url=user.avatar_url)
+        else:
+            em.set_author(name=name)
 
         for output in self.settings[server.id]['output']:
             where = server.get_channel(output)
             if where is not None:
-                    await self.bot.send_message(where, embed=em)
+                message = await self.bot.send_message(where, embed=em)
+                await self.bot.add_reaction(message, "👍")
+                await self.bot.add_reaction(message, "👎")
 
         self.settings[server.id]['usercache'].remove(author.id)
         self.save_json()
