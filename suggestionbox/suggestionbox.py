@@ -142,7 +142,6 @@ class SuggestionBox:
                       icon_url=avatar)
 
         name = str(user)
-        name = " ~ ".join((name, user.nick)) if user.nick else name
 
         if user.avatar_url:
             em.set_author(name=name, url=user.avatar_url)
