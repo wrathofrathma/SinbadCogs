@@ -6,7 +6,6 @@ from discord.ext import commands
 from cogs.utils.dataIO import dataIO
 from cogs.utils import checks
 
-
 class SuggestionBox:
     """custom cog for a configureable suggestion box"""
 
@@ -136,6 +135,7 @@ class SuggestionBox:
         
         if not user:
             user = author
+	#This is where we configure the suggestion-box look. 
         em = discord.Embed(description=suggestion, timestamp=message.timestamp,
                            color=discord.Color.purple())    
         em.set_author(name='Suggestion from {0.display_name}'.format(author),
@@ -150,6 +150,8 @@ class SuggestionBox:
         else:
             em.set_author(name=name)
 
+	#end configuration of the box aesthetics.
+
         for output in self.settings[server.id]['output']:
             where = server.get_channel(output)
             if where is not None:
@@ -160,7 +162,86 @@ class SuggestionBox:
         self.settings[server.id]['usercache'].remove(author.id)
         self.save_json()
 
+    #Let's start setting up our response
+    @checks.admin_or_permissions(Manage_server=True)
+    @commands.command(name="respond", pass_context=True, no_pm=True)
+    async def accept(self, ctx):
+        server = ctx.message.server 
+        author = server.get_member(ctx.message.author.id)
 
+    	#Let's split the string into smol pieces. Command structure should be like .accept suggestion_message_id response
+        response_split = ctx.message.content.split()
+        
+        #Test if there is a message ID
+        if(len(response_split) < 2):
+            await self.bot.send_message(ctx.message.channel, "Try adding a suggestion ID you cunt")
+            return
+        suggest_id = response_split[1]
+
+        #Test if there is an accept/deny value
+        if(len(response_split) < 3):
+            await self.bot.send_message(ctx.message.channel, "Accepting or denying? The fuck man you gotta let someone know.")
+            return
+        #Test if the accept/deny value is actually fucking useful
+        if(response_split[2]!="accept" and response_split[2]!="deny" and response_split[2]!="meh"):
+            await self.bot.send_message(ctx.message.channel, "Do you know how to type? You need to accept/deny")
+#            await self.bot.send_message(ctx.message.channel, response_split[2])
+
+            return
+            
+        #Test if there is a response
+        if(len(response_split) < 4):
+            await self.bot.send_message(ctx.message.channel, "Motherfucker, try adding a response")
+            return
+
+        #Test if the suggestion message_id is valid. Let's try to keep it consistent with multiple output channels.
+        for output in self.settings[server.id]['output']:
+            where = server.get_channel(output)
+            if(where is not None):
+                #This try/except is to catch for when bitches don't use a suggestion ID. It'll throw an HTTPException: 400 Bad Request.
+                try:
+                    suggestion = await self.bot.get_message(where,suggest_id)
+                except discord.errors.HTTPException:
+                    await self.bot.send_message(ctx.message.channel, "You probably input an invalid message ID and broke the bot you cuck")
+                    return
+                if(suggestion.content!=None):
+                    break
+        #I'm not actually sure this will ever get triggered, because I think discord.errors.HTTPException gets thrown if the message isn't found period. As does discord.errors.NotFound. 
+        if(suggestion == None):
+            await self.bot.send_message(ctx.message.channel, "Couldn't find suggestion message")
+            return
+
+        #discord.Message.embed contains a single nested dictionary object at element 0. This contains multiple other dictionaries for each element. 
+        #Let's use this to configure our response.
+        em = discord.Embed(
+                            type="rich",
+                            description=suggestion.embeds[0]['description'], 
+                            timestamp=ctx.message.timestamp, 
+                            color=discord.Color.red())
+        if(response_split[2]=="accept"):
+            em.color=discord.Color.green()
+        elif(response_split[2]=="deny"):
+            em.color=discord.Color.red()
+        else:
+            em.color=discord.Color.light_grey()
+
+        sauthor = server.get_member_named(suggestion.embeds[0]['author']['name'])
+        avatar = sauthor.avatar_url if sauthor.avatar \
+            else sauthor.default_avatar_url
+        em.set_author(name=format(sauthor))
+        em.set_thumbnail(url=avatar)
+        em.add_field(name='Response by: {0.display_name}'.format(author), value=" ".join(response_split[3:]))
+        #End response configuration
+
+        for output in self.settings[server.id]['output']:
+            where = server.get_channel(output)
+            if where is not None:
+                message = await self.bot.send_message(where, embed=em) 
+                await self.bot.add_reaction(message, "👍")
+                await self.bot.add_reaction(message, "👎")
+        await self.bot.delete_message(message=suggestion)
+
+        	
 def check_folder():
     f = 'data/suggestionbox'
     if not os.path.exists(f):
